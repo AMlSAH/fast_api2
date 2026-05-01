@@ -66,6 +66,22 @@ def get_current_user(
         )
     return user
 
+def get_current_user_optional(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
+    if token is None:
+        return None
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("sub")
+        if user_id is None:
+            return None
+        user = db.query(User).filter(User.id == int(user_id)).first()
+        return user
+    except JWTError:
+        return None
+
 def require_admin(current_user: User = Depends(get_current_user)):
     if current_user.group != "admin":
         raise HTTPException(

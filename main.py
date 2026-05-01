@@ -2,6 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
+from typing import Optional
 import models, schemas, auth
 from database import engine, SessionLocal, Base
 
@@ -36,17 +37,27 @@ def login(data: schemas.LoginData, db: Session = Depends(auth.get_db)):
     return {"access_token": access_token, "token_type": "bearer"}
 
 @app.post("/user", response_model=schemas.UserOut, status_code=status.HTTP_201_CREATED)
-def create_user(user_data: schemas.UserCreate, db: Session = Depends(auth.get_db)):
-    existing = db.query(models.User).filter(models.User.username == user_data.username).first()
-    if existing:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Пользователь с таким именем уже существует",
-        )
+def create_user(
+    user_data: schemas.UserCreate,
+    db: Session = Depends(auth.get_db),
+    current_user: Optional[models.User] = Depends(auth.get_current_user_optional)
+):
     if user_data.group not in ("user", "admin"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Группа должна быть 'user' или 'admin'",
+        )
+    if user_data.group == "admin":
+        if current_user is None or current_user.group != "admin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Только администратор может создавать администраторов",
+            )
+    existing = db.query(models.User).filter(models.User.username == user_data.username).first()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Пользователь с таким именем уже существует",
         )
     hashed = auth.get_password_hash(user_data.password)
     new_user = models.User(
@@ -60,7 +71,7 @@ def create_user(user_data: schemas.UserCreate, db: Session = Depends(auth.get_db
     except IntegrityError:
         db.rollback()
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_409_CONFLICT,
             detail="Пользователь с таким именем уже существует",
         )
     db.refresh(new_user)
@@ -89,9 +100,12 @@ def update_user(
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Пользователь не найден")
     if updates.username is not None:
-        if db.query(models.User).filter(models.User.username == updates.username, models.User.id != user_id).first():
+        if db.query(models.User).filter(
+            models.User.username == updates.username,
+            models.User.id != user_id
+        ).first():
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+                status_code=status.HTTP_409_CONFLICT,
                 detail="Пользователь с таким именем уже существует",
             )
         user.username = updates.username
@@ -114,7 +128,7 @@ def update_user(
     except IntegrityError:
         db.rollback()
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_409_CONFLICT,
             detail="Пользователь с таким именем уже существует",
         )
     db.refresh(user)
