@@ -77,6 +77,18 @@ def create_user(
     db.refresh(new_user)
     return new_user
 
+@app.get("/user", response_model=list[schemas.UserOut])
+def get_users(
+    db: Session = Depends(auth.get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    if current_user.group != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Требуются права администратора"
+        )
+    return db.query(models.User).all()
+
 @app.get("/user/{user_id}", response_model=schemas.UserOut)
 def get_user(user_id: int, db: Session = Depends(auth.get_db)):
     user = db.query(models.User).filter(models.User.id == user_id).first()

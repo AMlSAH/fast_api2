@@ -8,7 +8,7 @@ from database import SessionLocal
 from models import User
 import os
 
-SECRET_KEY = os.getenv("SECRET_KEY", "очень-секретный_ключ")
+SECRET_KEY = os.getenv("SECRET_KEY", "very-secret-key-change-me")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 48
 
